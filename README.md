@@ -28,3 +28,16 @@ A model like this can help network teams identify high-risk incidents earlier, r
 
 ## What I Learned
 This project helped me understand how operational network data can be converted into features for predictive modeling and how recall is important when missing an incident can be costly.
+
+## NetOps AI — Unsupervised Incident Intelligence
+
+The repository also includes an **Isolation Forest** anomaly detector, reproducible synthetic network KPI generator, separate Streamlit anomaly dashboard, chronological holdout evaluation, tests, and GitHub Actions CI. The original supervised incident risk application is preserved.
+
+```bash
+pip install -r requirements.txt
+python train_anomaly.py
+streamlit run anomaly_dashboard.py
+python -m pytest -q tests/test_anomaly.py
+```
+
+See [NETOPS_UPGRADE.md](NETOPS_UPGRADE.md) for details. The extension uses simulated data, so its performance does not demonstrate production accuracy.
