@@ -2,31 +2,31 @@ from pathlib import Path
 import pandas as pd
 import joblib
 import matplotlib.pyplot as plt
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, roc_auc_score, confusion_matrix
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 
-ROOT = Path(__file__).resolve().parents[1]
-DATA = ROOT / "data" / "network_kpi_logs.csv"
+from netops_ai.supervised_split import chronological_split
+
+ROOT = Path(__file__).resolve().parent
+DATA = ROOT / "network_kpi_logs.csv"
 MODELS = ROOT / "models"
 OUTPUTS = ROOT / "outputs"
 MODELS.mkdir(exist_ok=True)
 OUTPUTS.mkdir(exist_ok=True)
 
 df = pd.read_csv(DATA)
-df["timestamp"] = pd.to_datetime(df["timestamp"])
+df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
 df["hour"] = df["timestamp"].dt.hour
 df["day_of_week"] = df["timestamp"].dt.dayofweek
 
-X = df.drop(columns=["timestamp", "incident"])
-y = df["incident"]
-
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.25, random_state=42, stratify=y
-)
+train_df, test_df = chronological_split(df, test_fraction=0.25)
+X_train = train_df.drop(columns=["timestamp", "incident"])
+y_train = train_df["incident"]
+X_test = test_df.drop(columns=["timestamp", "incident"])
+y_test = test_df["incident"]
 
 models = {
     "logistic_regression": Pipeline([
@@ -39,7 +39,13 @@ models = {
 }
 
 best_name, best_auc, best_model = None, -1, None
-report_lines = []
+report_lines = [
+    "Chronological 75/25 split by distinct timestamp (synthetic data).",
+    "Caution: selecting the best model on this holdout makes its reported AUC optimistic;",
+    "a separate validation period is required before claiming unbiased test performance.",
+    f"Train: {len(train_df)} rows ending {train_df.timestamp.max()}; ",
+    f"Holdout: {len(test_df)} rows starting {test_df.timestamp.min()}.",
+]
 
 for name, model in models.items():
     model.fit(X_train, y_train)
@@ -57,9 +63,9 @@ joblib.dump(best_model, MODELS / "incident_prediction_model.joblib")
 (OUTPUTS / "model_report.txt").write_text("\n".join(report_lines), encoding="utf-8")
 
 if best_name == "random_forest":
-    importances = pd.Series(best_model.feature_importances_, index=X.columns).sort_values(ascending=False)
+    importances = pd.Series(best_model.feature_importances_, index=X_train.columns).sort_values(ascending=False)
 else:
-    importances = pd.Series(abs(best_model.named_steps["model"].coef_[0]), index=X.columns).sort_values(ascending=False)
+    importances = pd.Series(abs(best_model.named_steps["model"].coef_[0]), index=X_train.columns).sort_values(ascending=False)
 
 plt.figure(figsize=(9, 5))
 importances.head(10).plot(kind="bar")
@@ -68,5 +74,5 @@ plt.ylabel("Importance")
 plt.tight_layout()
 plt.savefig(OUTPUTS / "feature_importance.png", dpi=160)
 
-print(f"Best model: {best_name} | ROC-AUC: {best_auc:.4f}")
+print(f"Best model: {best_name} | ROC-AUC: {best_auc:.4f} (model-selection holdout; optimistic)")
 print(f"Saved model to {MODELS / 'incident_prediction_model.joblib'}")
